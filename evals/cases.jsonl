@@ -1,0 +1,10 @@
+{"id":"case_01_cooperation_agreement","input_path":"data/examples/cooperation_agreement.txt","expected_contains":["сотрудничество","сторон","риск"]}
+{"id":"case_02_labor_contract","input_path":"data/examples/labor_contract.txt","expected_contains":["трудовой","работник","риск"]}
+{"id":"case_03_legal_services","input_path":"data/examples/legal_services.txt","expected_contains":["услуг","заказчик","риск"]}
+{"id":"case_04_loan_agreement","input_path":"data/examples/loan_agreement.txt","expected_contains":["займ","заемщик","риск"]}
+{"id":"case_05_nda","input_path":"data/examples/nda.txt","expected_contains":["конфиденциальн","штраф","риск"]}
+{"id":"case_06_providing_service","input_path":"data/examples/providing_service.txt","expected_contains":["услуг","оплата","риск"]}
+{"id":"case_07_purchase_agreement","input_path":"data/examples/purchase_agreement.txt","expected_contains":["товар","продавец","риск"]}
+{"id":"case_08_residential_lease_agreement","input_path":"data/examples/residential_lease_agreement.txt","expected_contains":["аренд","платеж","риск"]}
+{"id":"case_09_shipment_agreement","input_path":"data/examples/shipment_agreement.txt","expected_contains":["поставк","товар","риск"]}
+{"id":"case_10_work_contract","input_path":"data/examples/work_contract.txt","expected_contains":["подряд","заказчик","риск"]}

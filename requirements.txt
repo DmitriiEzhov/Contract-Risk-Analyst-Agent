@@ -1,0 +1,7 @@
+langgraph>=0.2.60
+openai>=1.55.0
+python-dotenv>=1.0.1
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pydantic>=2.8.0
+langfuse>=2.53.0

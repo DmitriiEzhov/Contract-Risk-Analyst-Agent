@@ -1,0 +1,12 @@
+case_01_cooperation_agreement: PASS
+case_02_labor_contract: PASS
+case_03_legal_services: PASS
+case_04_loan_agreement: PASS
+case_05_nda: PASS
+case_06_providing_service: PASS
+case_07_purchase_agreement: PASS
+case_08_residential_lease_agreement: PASS
+case_09_shipment_agreement: PASS
+case_10_work_contract: PASS
+
+Success rate: 100.00%
