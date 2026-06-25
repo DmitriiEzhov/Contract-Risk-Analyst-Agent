@@ -1,15 +1,44 @@
-# Contract Risk Analyst Agent
+Contract Risk Analyst Agent
 
-AI-агент для предварительного анализа договоров перед подписанием.
+Contract Risk Analyst Agent — это AI-агент для предварительного анализа договоров перед подписанием.
 
-Агент принимает текст договора, определяет тип документа, извлекает ключевые условия, проверяет договор по чеклисту рисков через RAG, классифицирует уровень риска и сохраняет отчет.
+Агент принимает текст договора, определяет тип документа, извлекает ключевые условия, проверяет договор по чеклисту рисков с использованием RAG, классифицирует уровень риска и сохраняет итоговый отчет.
 
-Важно: агент не заменяет юриста и не предоставляет юридическое заключение. Это предварительный risk screening.
+Проект реализован как инженерный AI-agent pipeline с использованием:
 
-## Architecture
+* LangGraph;
+* Yandex AI Studio;
+* RAG-чеклистов;
+* внешних tools;
+* CLI-интерфейса;
+* FastAPI-интерфейса;
+* benchmark-набора из 10 кейсов;
+* автоматических eval-проверок.
 
-```text
-User
+Важно: агент не заменяет юриста и не предоставляет юридическое заключение. Он выполняет только предварительный анализ договора и помогает выявить пункты, которые требуют дополнительной проверки специалистом.
+
+⸻
+
+1. Задача проекта
+
+Перед подписанием договора пользователю часто сложно быстро понять:
+
+* что это за тип договора;
+* какие ключевые условия в нем указаны;
+* какие суммы, сроки, обязательства и штрафы предусмотрены;
+* есть ли потенциально рискованные или односторонние условия;
+* каких важных пунктов может не хватать;
+* какие вопросы стоит задать второй стороне перед подписанием.
+
+Цель агента — автоматизировать первичную проверку договора и сформировать понятный отчет с найденными рисками и рекомендациями.
+
+⸻
+
+2. Архитектура решения
+
+Общая архитектура проекта:
+
+Пользователь
  ↓
 CLI / FastAPI
  ↓
@@ -35,131 +64,429 @@ risk_level_branch
 save_report
  ↓
 END
-```
 
-The graph has two branching points: RAG routing and risk-level report routing.
+В проекте используется нелинейный граф LangGraph с двумя основными точками ветвления:
 
-## Tools
+1. RAG routing — агент выбирает, нужно ли использовать внешний чеклист рисков.
+2. Risk-level routing — агент выбирает формат финального отчета в зависимости от уровня риска: low, medium или high.
 
-- `read_document_tool` — reads contract text from filesystem.
-- `save_report_tool` — saves final report to `reports/`.
-- `estimate_cost_tool` — estimates approximate token usage.
-- `save_run_metadata_tool` — saves run metadata to JSONL.
+Таким образом, агент не просто генерирует текст, а выполняет последовательный workflow: читает документ, классифицирует его, извлекает факты, анализирует риски и сохраняет результат.
 
-## RAG
+⸻
 
-RAG knowledge is stored in `data/knowledge/`:
+3. Структура проекта
 
-- `general_contract_risks.md`
-- `rental_contract_checklist.md`
-- `service_contract_checklist.md`
-- `nda_checklist.md`
-- `sales_contract_checklist.md`
+contract_risk_agent/
+│
+├── data/
+│   ├── examples/              # Тестовые договоры
+│   └── knowledge/             # RAG-чеклисты
+│
+├── evals/
+│   ├── cases.jsonl            # Benchmark cases
+│   └── run_evals.py           # Скрипт для запуска evals
+│
+├── reports/                   # Сохраненные отчеты агента
+│
+├── src/
+│   └── contract_agent/
+│       ├── api.py             # FastAPI-интерфейс
+│       ├── cli.py             # CLI-интерфейс
+│       ├── config.py          # Конфигурация проекта
+│       ├── graph.py           # LangGraph workflow
+│       ├── llm.py             # Подключение к Yandex AI Studio
+│       ├── prompts.py         # Prompt templates
+│       ├── rag.py             # RAG retrieval
+│       ├── state.py           # State агента
+│       └── tools.py           # Tools агента
+│
+├── .env.example               # Шаблон переменных окружения
+├── .gitignore
+├── README.md
+└── requirements.txt
 
-Current version uses deterministic retrieval by contract type. It can be replaced by FAISS/Chroma later.
+⸻
 
-## Setup
+4. Используемые tools
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-```
+В проекте реализованы несколько tools, которые используются внутри агентного workflow.
 
-Fill `.env`:
+read_document_tool
 
-```env
+Читает текст договора из файловой системы.
+
+Используется для загрузки .txt договора из директории data/examples/.
+
+save_report_tool
+
+Сохраняет итоговый отчет агента в директорию reports/.
+
+Это позволяет не только показать результат пользователю в терминале, но и сохранить его как отдельный файл.
+
+estimate_cost_tool
+
+Оценивает примерное количество input/output tokens для одного запуска агента.
+
+Эта функция нужна для оценки потенциальной стоимости работы агента при использовании LLM API.
+
+save_run_metadata_tool
+
+Сохраняет metadata запуска в JSONL-файл.
+
+Пример metadata:
+
+{
+  "input_path": "data/examples/nda.txt",
+  "contract_type": "nda",
+  "risk_level": "high",
+  "saved_report_path": "reports/contract_report_20260625_101500.md",
+  "cost_estimate": {
+    "approx_input_tokens": 2500,
+    "approx_output_tokens": 1200,
+    "approx_total_tokens": 3700
+  }
+}
+
+Таким образом, агент взаимодействует с внешней средой: читает файлы, сохраняет отчеты и записывает metadata запусков.
+
+⸻
+
+5. RAG
+
+Для анализа рисков используется RAG-подход.
+
+Внешние знания хранятся в директории:
+
+data/knowledge/
+
+Там находятся чеклисты для разных типов договоров:
+
+general_contract_risks.md
+rental_contract_checklist.md
+service_contract_checklist.md
+nda_checklist.md
+sales_contract_checklist.md
+
+Примеры знаний, которые используются агентом:
+
+* типовые риски в договорах оказания услуг;
+* риски NDA;
+* риски договоров аренды;
+* риски договоров купли-продажи;
+* общие риски договоров.
+
+В текущей версии используется deterministic retrieval: агент сначала определяет тип договора, а затем выбирает соответствующий чеклист.
+
+В дальнейшем этот механизм можно заменить на векторный поиск через FAISS, Chroma или другую vector database.
+
+⸻
+
+6. LLM
+
+В качестве LLM используется модель из Yandex AI Studio через OpenAI-compatible API.
+
+Переменные окружения задаются в .env:
+
 YANDEX_API_KEY=your_secret_key
 YANDEX_BASE_URL=https://ai.api.cloud.yandex.net/v1
 YANDEX_MODEL=gpt://your_folder_id/yandexgpt/latest
-```
 
-## Run CLI
+Файл .env не должен попадать в GitHub. Для примера в репозитории хранится только .env.example.
 
-```bash
-PYTHONPATH=. python -m src.contract_agent.cli data/examples/contract_01.txt
-```
+⸻
 
-## Run API
+7. Установка
 
-```bash
+Создать виртуальное окружение:
+
+python -m venv .venv
+source .venv/bin/activate
+
+Установить зависимости:
+
+pip install -r requirements.txt
+
+Создать .env:
+
+cp .env.example .env
+
+Заполнить .env:
+
+YANDEX_API_KEY=your_secret_key
+YANDEX_BASE_URL=https://ai.api.cloud.yandex.net/v1
+YANDEX_MODEL=gpt://your_folder_id/yandexgpt/latest
+
+⸻
+
+8. Запуск через CLI
+
+Пример запуска агента на одном договоре:
+
+PYTHONPATH=. python -m src.contract_agent.cli data/examples/nda.txt
+
+После запуска агент:
+
+1. читает договор;
+2. определяет тип документа;
+3. выбирает RAG-чеклист;
+4. извлекает ключевые условия;
+5. анализирует риски;
+6. классифицирует уровень риска;
+7. формирует отчет;
+8. сохраняет отчет в папку reports/.
+
+⸻
+
+9. Запуск FastAPI
+
+Запустить API:
+
 PYTHONPATH=. uvicorn src.contract_agent.api:app --reload
-```
 
-Request:
+После запуска Swagger-документация доступна по адресу:
 
-```bash
+http://127.0.0.1:8000/docs
+
+Пример запроса:
+
 curl -X POST http://127.0.0.1:8000/analyze \
   -H "Content-Type: application/json" \
-  -d '{"input_path":"data/examples/contract_01.txt"}'
-```
+  -d '{"input_path":"data/examples/nda.txt"}'
 
-## Benchmark
+Пример ответа:
 
-Benchmark file: `evals/cases.jsonl`.
+{
+  "contract_type": "nda",
+  "risk_level": "high",
+  "report": "...",
+  "saved_report_path": "reports/contract_report_20260625_101500.md"
+}
 
-Run:
+⸻
 
-```bash
+10. Benchmark dataset
+
+Для проверки качества работы агента подготовлен benchmark из 10 договоров.
+
+Все документы в data/examples/ являются сгенерированными учебными примерами. Они не содержат реальных персональных данных, реальных сделок, реальных клиентов или конфиденциальной информации. Имена, реквизиты, суммы, адреса и условия в договорах вымышлены и используются только для демонстрации работы агента.
+
+Набор включает как нормальные договоры, так и договоры с намеренно добавленными рискованными или подозрительными условиями.
+
+Примеры кейсов:
+
+Case	Файл	Тип договора	Ожидаемое поведение
+case_01	cooperation_agreement.txt	Договор о сотрудничестве	Определить сотрудничество, обязанности сторон и условия конфиденциальности
+case_02	labor_contract.txt	Трудовой договор	Найти риски, связанные со штрафами, работой в выходные и запретом конкуренции
+case_03	legal_services.txt	Договор юридических услуг	Найти риски в условиях предоплаты, сроках, привлечении третьих лиц и пропусках в тексте
+case_04	loan_agreement.txt	Договор займа	Найти риски по расписке, процентам, неустойке и порядку возврата
+case_05	nda.txt	NDA	Найти риски бессрочной конфиденциальности, штрафа и запрета конкуренции
+case_06	providing_service.txt	Договор оказания услуг	Извлечь сроки, оплату, акт и порядок приемки
+case_07	purchase_agreement.txt	Договор купли-продажи	Найти риски одностороннего изменения условий и короткого гарантийного срока
+case_08	residential_lease_agreement.txt	Договор аренды жилья	Проверить депозит, акт приема-передачи и коммунальные платежи
+case_09	shipment_agreement.txt	Договор поставки	Проверить спецификации, приемку, гарантию и сроки поставки
+case_10	work_contract.txt	Договор подряда	Найти риски по доработкам, переходу прав, неустойке и оплате
+
+⸻
+
+11. Evaluation
+
+Файл benchmark-кейсов:
+
+evals/cases.jsonl
+
+Запуск evals:
+
 PYTHONPATH=. python evals/run_evals.py
-```
 
-Metric:
+Основная метрика:
 
-```text
 success rate = passed cases / total cases
-```
 
-## Evaluation
+В текущей версии используется программная проверка: для каждого кейса задан список expected_contains, то есть ключевых слов или фраз, которые должны появиться в финальном отчете агента.
 
-The project uses three types of checks:
+Пример строки из cases.jsonl:
 
-1. Programmatic accept: expected keywords in final report.
-2. LLM-as-judge: can be added for semantic assessment.
-3. Tool-call correctness: run metadata shows that file reading, report saving, and cost estimation were executed.
+{
+  "id": "case_05_nda",
+  "input_path": "data/examples/nda.txt",
+  "expected_contains": ["конфиденциальн", "штраф", "риск"]
+}
 
-## LangFuse
+⸻
 
-Optional observability can be added with LangFuse. Suggested trace fields:
+12. Результаты
 
-- input path;
-- contract type;
-- selected graph route;
-- retrieved checklist;
-- extracted facts;
-- risk level;
-- final report;
-- latency;
-- approximate token usage;
-- errors.
+Финальный прогон benchmark показал успешное прохождение всех 10 кейсов.
 
-## Security checklist
+case_01_cooperation_agreement: PASS
+case_02_labor_contract: PASS
+case_03_legal_services: PASS
+case_04_loan_agreement: PASS
+case_05_nda: PASS
+case_06_providing_service: PASS
+case_07_purchase_agreement: PASS
+case_08_residential_lease_agreement: PASS
+case_09_shipment_agreement: PASS
+case_10_work_contract: PASS
+Success rate: 100.00%
 
-- [x] API keys are stored in `.env`, not in code.
-- [x] `.env` is ignored by git.
-- [x] Agent output includes a disclaimer.
-- [x] The agent performs preliminary analysis, not legal advice.
-- [x] Input length sent to LLM is limited.
-- [x] Reports and metadata are saved locally.
-- [ ] Add PII masking before sending contract text to LLM.
-- [ ] Add file size limits.
-- [ ] Add PDF/DOCX support with validation.
-- [ ] Add API authentication if deployed.
+Итоговая метрика:
 
-## Limitations
+Success rate: 100%
 
-- Baseline supports `.txt` files only.
-- RAG is deterministic and checklist-based.
-- The model may miss legal risks.
-- The agent should not be used as the only source for signing decisions.
+Это означает, что агент успешно сформировал отчеты, содержащие ожидаемые ключевые элементы анализа для всех 10 тестовых договоров.
 
-## Future improvements
+⸻
 
-- PDF/DOCX support.
-- OCR for scanned contracts.
-- Vector RAG with FAISS/Chroma.
-- Pydantic structured output validation.
-- LLM-as-judge evals.
-- Streamlit UI or Telegram bot.
-- Export report to PDF.
+13. Типы проверок
+
+В проекте используются или предусмотрены следующие типы evaluation:
+
+1. Programmatic accept
+
+Проверяется наличие ожидаемых ключевых слов в финальном отчете.
+
+Это простая, воспроизводимая и автоматическая проверка.
+
+2. Tool-call correctness
+
+Проверяется, что агент действительно использует tools:
+
+* чтение договора;
+* сохранение отчета;
+* оценка токенов;
+* сохранение metadata.
+
+3. LLM-as-judge
+
+LLM-as-judge не является обязательной частью текущего baseline, но может быть добавлен как следующий шаг.
+
+В таком сценарии отдельная LLM будет оценивать, насколько корректно агент нашел главный риск и дал релевантную рекомендацию.
+
+⸻
+
+14. LangFuse / Observability
+
+В проекте предусмотрена возможность дальнейшего подключения LangFuse для observability.
+
+С помощью LangFuse можно логировать:
+
+* путь к входному документу;
+* тип договора;
+* выбранный маршрут графа;
+* использованный RAG-чеклист;
+* извлеченные факты;
+* найденные риски;
+* итоговый уровень риска;
+* финальный отчет;
+* latency;
+* примерное количество токенов;
+* ошибки при выполнении.
+
+Это позволит анализировать качество работы агента, стоимость запусков и причины возможных ошибок.
+
+⸻
+
+15. Security checklist
+
+Реализовано:
+
+* API-ключи хранятся в .env, а не в коде.
+* .env добавлен в .gitignore.
+* В репозитории хранится только .env.example.
+* Агент не выдает юридическое заключение.
+* Агент выполняет только предварительный risk screening.
+* В ответах используется disclaimer.
+* Все тестовые договоры являются сгенерированными и не содержат реальных персональных данных.
+* Длина текста, отправляемого в LLM, ограничивается в коде.
+* Отчеты и metadata сохраняются локально.
+* Пользователь видит путь к сохраненному отчету.
+
+Можно улучшить:
+
+* Добавить PII masking перед отправкой договора в LLM.
+* Добавить ограничение размера файла.
+* Добавить поддержку PDF и DOCX.
+* Добавить проверку расширений файлов.
+* Добавить авторизацию для API при деплое.
+* Добавить rate limiting для API.
+* Добавить более строгую валидацию JSON-ответов через Pydantic.
+
+⸻
+
+16. Ограничения
+
+Текущая версия проекта имеет несколько ограничений:
+
+* поддерживаются только .txt файлы;
+* RAG реализован как deterministic retrieval по типу договора;
+* качество анализа зависит от качества текста договора;
+* модель может пропустить сложные юридические риски;
+* evals проверяют наличие ключевых слов, а не полноценную юридическую корректность;
+* агент не должен использоваться как единственный источник решения о подписании договора.
+
+⸻
+
+17. Возможные улучшения
+
+В следующих версиях можно добавить:
+
+* поддержку PDF;
+* поддержку DOCX;
+* OCR для сканов договоров;
+* vector RAG через FAISS или Chroma;
+* structured outputs через Pydantic;
+* LLM-as-judge evaluation;
+* сравнение двух версий договора;
+* подсветку рискованных пунктов в исходном тексте;
+* Streamlit UI;
+* Telegram-бота;
+* экспорт отчета в PDF;
+* хранение истории анализов в базе данных;
+* PII masking;
+* production monitoring через LangFuse.
+
+⸻
+
+18. Demo scenario
+
+Пример демонстрации проекта:
+
+PYTHONPATH=. python -m src.contract_agent.cli data/examples/nda.txt
+
+Далее можно показать:
+
+1. исходный договор в data/examples/nda.txt;
+2. выбранный RAG-чеклист в data/knowledge/nda_checklist.md;
+3. финальный отчет в reports/;
+4. metadata запуска;
+5. результат benchmark:
+
+PYTHONPATH=. python evals/run_evals.py
+
+6. FastAPI-интерфейс:
+
+PYTHONPATH=. uvicorn src.contract_agent.api:app --reload
+
+Swagger:
+
+http://127.0.0.1:8000/docs
+
+⸻
+
+19. Вывод
+
+Проект демонстрирует полный цикл разработки AI-агента:
+
+* формулировка прикладной задачи;
+* проектирование LangGraph workflow;
+* использование RAG;
+* подключение внешних tools;
+* интеграция с Yandex AI Studio;
+* CLI и API-интерфейсы;
+* benchmark dataset;
+* eval-проверки;
+* сохранение отчетов и metadata;
+* описание ограничений и security checklist.
+
+Итоговый результат: агент успешно проходит 10 из 10 benchmark-кейсов и достигает Success rate: 100% на подготовленном тестовом наборе.
